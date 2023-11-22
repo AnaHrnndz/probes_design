@@ -1,0 +1,52 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH -n 2
+#SBATCH --mem=32GB
+#SBATCH --array=1-558
+#SBATCH -e /home/plaza/projects/biorare/gtdb_vs_kegg/scripts/slurm/build_probes/build_eko_probes_%A_%a.err
+#SBATCH -o /home/plaza/projects/biorare/gtdb_vs_kegg/scripts/slurm/build_probes/build_eko_probes_%A_%a.out
+#SBATCH -t 07-00:00
+#SBATCH -p long
+
+#####
+#   Run Desing probes scripts
+#   KO with reciprocal analysis
+#####
+
+
+#export PATH=/home/plaza/projects/biorare/scripts/insilico_scripts/kits_targeted/src:$PATH
+#ml  BLAST+
+#ml  CD-HIT
+
+
+fasta_in=$(cat '/home/plaza/projects/biorare/gtdb_vs_kegg/results/path2expanded_fastas.txt' | sed -n ${SLURM_ARRAY_TASK_ID}p)
+name=$(basename  $fasta_in | sed 's/.fna//g')
+
+
+kmsize=120
+kmwind=60
+cdhit_id=0.8
+cdhit_cov=0.8
+mapback_id=0.8
+mapback_cov=0.8
+main_outdir=/home/plaza/projects/biorare/gtdb_vs_kegg/results/eko_probes
+src_dir=/home/plaza/projects/biorare/scripts/insilico_scripts/kits_targeted/src
+specific_outdir=${main_outdir}/${name}/v1
+
+mkdir -p $specific_outdir
+
+echo $name, $kmsize, $kmwind, $cdhit_id, $cdhit_cov, $mapback_id, $mapback_cov, $specific_outdir
+
+
+
+python $src_dir/kmers_fasta.py $fasta_in $name $kmsize $kmwind $cdhit_id $cdhit_cov $specific_outdir
+
+create_genes_db.sh $fasta_in
+
+mapback_kmers_sample.sh $specific_outdir/${name}_kmers.clustering $fasta_in $specific_outdir/${name}_kmers.clustering.blastn 2
+
+mapback_kmers_filter_sample.sh $fasta_in $specific_outdir/${name}_kmers.clustering.blastn.gz $specific_outdir/${name}_kmers.clustering.blastn.filt $mapback_id $mapback_cov
+
+mapback_kmers_stats.sh $specific_outdir/${name}_kmers.clustering.blastn.filt $specific_outdir/${name}_kmers.clustering.blastn.filt.refs_cov >$specific_outdir/${name}_stats.out 2>$specific_outdir/${name}_stats.err
+
+python $src_dir/recover_kmers_fasta.py $fasta_in $specific_outdir/${name}_kmers.clustering.blastn.filt.refs_cov $kmsize $kmwind $cdhit_id $cdhit_cov $specific_outdir
